@@ -134,7 +134,7 @@ static int is_macho(size_t ptr)
    mach_header_t *mh = (mach_header_t *) ptr;
 
    // Is this a valid mach-o dylib file?
-   if(mh->magic == MACHO_MAGIC && mh->filetype == MH_DYLIB)
+   if(mh->magic == MACHO_MAGIC && mh->filetype == MH_DYLIB && mh->cputype == CPU_TYPE)
       return 1;
 
    return 0;

@@ -24,6 +24,12 @@
    #endif
 #endif
 
+#define CPU_ARCH_ABI64     0x01000000              /* 64 bit ABI */
+#define CPU_TYPE_X86       7
+#define CPU_TYPE_X86_64    (CPU_TYPE_X86 | CPU_ARCH_ABI64)
+#define CPU_TYPE_ARM       12
+#define CPU_TYPE_ARM64     (CPU_TYPE_ARM | CPU_ARCH_ABI64)
+
 #define NSLINKMODULE_OPTION_PRIVATE 0x2
 #define LC_SEGMENT      0x1
 #define LC_SEGMENT_64   0x19
