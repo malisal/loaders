@@ -1,5 +1,9 @@
-#include <stdio.h>
-#include <unistd.h>
+#if defined(NAKED)
+   #include <system/syscall.h>
+#else
+   #include <stdio.h>
+   #include <unistd.h>
+#endif
 
 #include "macho.h"
 
@@ -55,7 +59,7 @@ static int macho_parse(mach_header_t *mh, func_t *funcs)
          case LC_ID_DYLIB:
             dlb = (dylib_command_t *)cmd;
             char *name = (char *)cmd + dlb->dylib.name.offset;
-
+            
             // Is this the lib: /usr/lib/system/libdyld.dylib?
             if(hash_djb(name) == 0x8d3fccfd)
                ret = 1;
@@ -75,7 +79,7 @@ static int macho_parse(mach_header_t *mh, func_t *funcs)
                char *sym_name = &strtab[nls[y].n_un.n_strx];
                size_t sym_val = (size_t)((char *)mh + nls[y].n_value - seg_text->vmaddr);
                uint32_t hash = hash_djb(sym_name);
-
+               
                switch(hash)
                {
                   case 0x64c5cea0:
@@ -105,9 +109,21 @@ static int macho_parse(mach_header_t *mh, func_t *funcs)
    return ret;
 }
 
-static int is_ptr_valid(int fd, size_t ptr)
+static int is_ptr_valid(size_t ptr)
 {
-   if(write(fd, (void *)ptr, 1) == 1)
+   static int fd = 0;
+
+   // A dummy file descriptor for testing if a pointer is valid
+   if(!fd)
+   {
+      #if defined(NAKED)
+         fd = open("/dev/random", O_WRONLY, 0);
+      #else
+         fd = open("/dev/random", O_WRONLY);
+      #endif
+   }
+
+   if(write(fd, (void *)ptr, sizeof(size_t)) == sizeof(size_t))
       return 1;
 
    return 0;
@@ -117,8 +133,8 @@ static int is_macho(size_t ptr)
 {
    mach_header_t *mh = (mach_header_t *) ptr;
 
-   // Is this a valid mach-o file?
-   if(mh->magic == MACHO_MAGIC)
+   // Is this a valid mach-o dylib file?
+   if(mh->magic == MACHO_MAGIC && mh->filetype == MH_DYLIB)
       return 1;
 
    return 0;
@@ -127,34 +143,34 @@ static int is_macho(size_t ptr)
 int macho_bootstrap(func_t *funcs)
 {
    int x, y;
-   
-   // A dummy file descriptor for testing if a pointer is valid
-   int fd = open("/dev/random", O_WRONLY);
 
    // We need a pointer anywhere onto the stack
    char *s = __builtin_alloca(0);
 
    // Let's find the very top of the stack
-   while(is_ptr_valid(fd, (size_t)s))
+   while(is_ptr_valid((size_t)s + 1))
       s++;
-
-   s -= sizeof(size_t);
 
    for(x = 0; x < 10000; x++)
    {
+      // Walk down the stack, one byte at a time
       size_t *ptr = (size_t *)(s - x);
 
+      // Do we have a valid pointer?
+      if(!is_ptr_valid((size_t)ptr) || !is_ptr_valid(*ptr))
+         continue;
+      
       // Page-align the pointer
-      size_t addr = *ptr & ~(PAGE_SIZE - 1); 
+      size_t addr = *ptr & ~(PAGE_SIZE - 1);
 
-      // Does the pointer point to a valid memory address?
-      if(is_ptr_valid(fd, addr))
+      // Walk backwards one page at a time and try to find the beginning
+      // of a mach-o file
+      for(y = 0; y < 100; y++)
       {
-         // By moving backwards, let's see if we find the beginning of a mach-o file
-         for(y = 0; y < 1000; y++, addr -= PAGE_SIZE)
-            if(is_ptr_valid(fd, addr) && is_macho(addr))
-               if(macho_parse((void *)addr, funcs))
-                  return 1;
+         if(is_ptr_valid(addr) && is_macho(addr) && macho_parse((void *)addr, funcs))
+            return 1;
+         
+         addr -= PAGE_SIZE;
       }
    }
 

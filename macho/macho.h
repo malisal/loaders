@@ -1,12 +1,28 @@
 #ifndef _MACHO_H_
 #define _MACHO_H_
 
-#include <fcntl.h>
-#include <stdint.h>
-#include <sys/mman.h>
+#if !defined(NAKED)
+   #include <fcntl.h>
+   #include <stdint.h>
+   #include <sys/mman.h>
 
-#define PAGE_SIZE 0x1000
-#define ROUND_UP(v, s) ((v + s - 1) & -s)
+   #define PAGE_SIZE 0x1000
+   #define ROUND_UP(v, s) ((v + s - 1) & -s)
+
+   #if INTPTR_MAX == INT64_MAX
+      #define BITS_64
+   #else
+      #define BITS_32
+   #endif
+#else
+   #if defined(ARCH_X86_64)
+      #define BITS_64
+   #elif defined(ARCH_I686)
+      #define BITS_32
+   #else
+      #error("Are you a wizard?")
+   #endif
+#endif
 
 #define NSLINKMODULE_OPTION_PRIVATE 0x2
 #define LC_SEGMENT      0x1
@@ -18,6 +34,8 @@
 #define MH_CIGAM        0xcefaedfe     /* NXSwapInt(MH_MAGIC) */
 #define MH_MAGIC_64     0xfeedfacf     /* the 64-bit mach magic number */
 #define MH_CIGAM_64     0xcffaedfe     /* NXSwapInt(MH_MAGIC_64) */
+
+#define	MH_DYLIB	0x6
 
 typedef enum {
    NSObjectFileImageFailure,
@@ -163,14 +181,14 @@ typedef struct {
     uint64_t n_value;      /* value of this symbol (or stab offset) */
 } nlist_64_t;
 
-#if INTPTR_MAX == INT32_MAX
+#if defined(BITS_32)
    #define CPU_TYPE CPU_TYPE_X86
    typedef mach_header_32_t mach_header_t;
    typedef segment_command_32_t segment_command_t;
    typedef section_32_t section_t;
    typedef nlist_32_t nlist_t;
    #define MACHO_MAGIC MH_MAGIC
-#elif INTPTR_MAX == INT64_MAX
+#elif defined(BITS_64)
    #define CPU_TYPE CPU_TYPE_X86_64
    typedef mach_header_64_t mach_header_t;
    typedef segment_command_64_t segment_command_t;
