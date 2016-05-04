@@ -5,7 +5,7 @@
 
 int main(int argc, char *argv[])
 {
-   func_t funcs;
+   boot_func_t funcs;
 
    // Walk the PEB, then find kernel32.dll and resolve the functions
    pe_bootstrap(&funcs);

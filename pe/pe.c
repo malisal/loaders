@@ -3,10 +3,9 @@
 // https://github.com/blole/injectory/blob/master/injectory/manualmap.cpp
 // http://www.cultdeadcow.com/tools/peload/peloader.c
 
+#if !defined(NAKED)
 #include <stdint.h>
 #include <windows.h>
-
-#include "pe.h"
 
 #define KERNEL32_DLL_HASH 0x6ddb9555
 
@@ -58,13 +57,13 @@ static void *get_peb()
    return ptr;
 }
 
-static void _memcpy(char *d, char *s, int size)
-{
-   int x;
+#else
+#include <system/syscall.h>
 
-   for(x = 0; x < size; x++)
-      d[x] = s[x];
-}
+#endif
+
+#include "pe.h"
+
 
 int pe_is_dll(char *data)
 {
@@ -75,26 +74,26 @@ int pe_is_dll(char *data)
    return (nh->FileHeader.Characteristics & IMAGE_FILE_DLL) != 0;
 }
 
-void pe_load(func_t *funcs, char *data, size_t *base, size_t *entry)
+void pe_load(boot_func_t *funcs, char *data, size_t *base, size_t *entry)
 {
    int x, y;
 
    IMAGE_DOS_HEADER *dh = (IMAGE_DOS_HEADER *)data;
    IMAGE_NT_HEADERS *nh = (IMAGE_NT_HEADERS *)(data + dh->e_lfanew);
    
-   ULONG_PTR uiBaseAddress = (ULONG_PTR)funcs->VirtualAlloc((void *)nh->OptionalHeader.ImageBase, nh->OptionalHeader.SizeOfImage, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+   ULONG_PTR uiBaseAddress = (ULONG_PTR)funcs->win_VirtualAlloc((void *)nh->OptionalHeader.ImageBase, nh->OptionalHeader.SizeOfImage, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 
    if(!uiBaseAddress)
    {
       // We failed to allocate the chosen region. Choose a random one
       //TODO
-      uiBaseAddress = (ULONG_PTR)funcs->VirtualAlloc(0, nh->OptionalHeader.SizeOfImage, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+      uiBaseAddress = (ULONG_PTR)funcs->win_VirtualAlloc(0, nh->OptionalHeader.SizeOfImage, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
    }
 
    ULONG_PTR uiLibraryAddress = uiBaseAddress - nh->OptionalHeader.ImageBase;
 
    // Copy over the headers
-   _memcpy((void *)uiBaseAddress, (void *)data, nh->OptionalHeader.SizeOfHeaders);
+   memcpy((void *)uiBaseAddress, (void *)data, nh->OptionalHeader.SizeOfHeaders);
 
    IMAGE_NT_HEADERS *nh_new = (IMAGE_NT_HEADERS *)(uiBaseAddress + dh->e_lfanew);
    nh_new->OptionalHeader.ImageBase = uiBaseAddress;
@@ -106,7 +105,7 @@ void pe_load(func_t *funcs, char *data, size_t *base, size_t *entry)
    // We disregard section permissions (all are RWX)
    //
    for(x = 0; x < nh->FileHeader.NumberOfSections; x++)
-      _memcpy((char *)uiBaseAddress + sec[x].VirtualAddress, (char *)data + sec[x].PointerToRawData, sec[x].SizeOfRawData);
+      memcpy((char *)uiBaseAddress + sec[x].VirtualAddress, (char *)data + sec[x].PointerToRawData, sec[x].SizeOfRawData);
 
    IMAGE_IMPORT_DESCRIPTOR *imp_desc = (IMAGE_IMPORT_DESCRIPTOR *)(uiBaseAddress + nh->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 
@@ -116,7 +115,7 @@ void pe_load(func_t *funcs, char *data, size_t *base, size_t *entry)
    for(x = 0; imp_desc[x].Name; x++)
    {
       FARPROC *addr;
-      HANDLE handle = funcs->LoadLibrary((char *)(uiBaseAddress + imp_desc[x].Name));
+      HANDLE handle = funcs->win_LoadLibrary((char *)(uiBaseAddress + imp_desc[x].Name));
 
       IMAGE_THUNK_DATA *thunk_data_out;
       IMAGE_THUNK_DATA *thunk_data_in;
@@ -134,14 +133,14 @@ void pe_load(func_t *funcs, char *data, size_t *base, size_t *entry)
          {
             // No name, just ordinal
             // http://www.cultdeadcow.com/tools/peload/peloader.c
-            addr = (FARPROC *)funcs->GetProcAddress(handle, MAKEINTRESOURCE(LOWORD(thunk_data_in[y].u1.Ordinal)));
+            addr = (FARPROC *)funcs->win_GetProcAddress(handle, MAKEINTRESOURCE(LOWORD(thunk_data_in[y].u1.Ordinal)));
             // FIXME: Does this ever happen?
             while(1);
          }
          else
          {
             IMAGE_IMPORT_BY_NAME *img_imp = (IMAGE_IMPORT_BY_NAME *)(uiBaseAddress + thunk_data_in[y].u1.AddressOfData);
-            addr = (FARPROC *)funcs->GetProcAddress(handle, (LPCSTR)img_imp->Name);
+            addr = (FARPROC *)funcs->win_GetProcAddress(handle, (LPCSTR)img_imp->Name);
          }
 
          // Patch the resolved address in
@@ -228,14 +227,14 @@ void pe_load(func_t *funcs, char *data, size_t *base, size_t *entry)
       else if(sec[x].Characteristics & IMAGE_SCN_MEM_EXECUTE)
          flags |= PAGE_EXECUTE;
 
-      funcs->VirtualProtect((char *)uiBaseAddress + sec[x].VirtualAddress, sec[x].Misc.VirtualSize, flags, &oldFlags);
+      funcs->win_VirtualProtect((char *)uiBaseAddress + sec[x].VirtualAddress, sec[x].Misc.VirtualSize, flags, &oldFlags);
    }
 
    *base = uiBaseAddress;
    *entry = uiBaseAddress + nh->OptionalHeader.AddressOfEntryPoint;
 }
 
-void pe_bootstrap(func_t *funcs)
+void pe_bootstrap(boot_func_t *funcs)
 {
    int x;
    PEB *peb = get_peb();
@@ -266,19 +265,19 @@ void pe_bootstrap(func_t *funcs)
          switch(hash(sym_name))
          {
             case 0x5fbff0fb:
-               funcs->LoadLibrary = (ptr_LoadLibrary) sym_val;
+               funcs->win_LoadLibrary = (ptr_LoadLibrary) sym_val;
                break;
 
             case 0xcf31bb1f:
-               funcs->GetProcAddress = (ptr_GetProcAddress) sym_val;
+               funcs->win_GetProcAddress = (ptr_GetProcAddress) sym_val;
                break;
 
             case 0x382c0f97:
-               funcs->VirtualAlloc = (ptr_VirtualAlloc) sym_val;
+               funcs->win_VirtualAlloc = (ptr_VirtualAlloc) sym_val;
                break;
 
             case 0x844ff18d:
-               funcs->VirtualProtect = (ptr_VirtualProtect) sym_val;
+               funcs->win_VirtualProtect = (ptr_VirtualProtect) sym_val;
                break;
          }
       }

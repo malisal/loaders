@@ -1,6 +1,7 @@
 #ifndef _PE_H_
 #define _PE_H_
 
+#if !defined(NAKED)
 typedef struct _UNICODE_STR
 {
   USHORT Length;
@@ -126,14 +127,15 @@ typedef BOOL __attribute__((stdcall)) (*ptr_VirtualProtect)(LPVOID lpAddress, SI
 
 typedef struct
 {
-   ptr_GetProcAddress GetProcAddress;
-   ptr_LoadLibrary LoadLibrary;
-   ptr_VirtualAlloc VirtualAlloc;
-   ptr_VirtualProtect VirtualProtect;
-} func_t;
+   ptr_GetProcAddress win_GetProcAddress;
+   ptr_LoadLibrary win_LoadLibrary;
+   ptr_VirtualAlloc win_VirtualAlloc;
+   ptr_VirtualProtect win_VirtualProtect;
+} boot_func_t;
+#endif
 
-void pe_bootstrap(func_t *funcs);
-void pe_load(func_t *funcs, char *data, size_t *base, size_t *entry);
+void pe_bootstrap(boot_func_t *funcs);
+void pe_load(boot_func_t *funcs, char *data, size_t *base, size_t *entry);
 int pe_is_dll(char *data);
 
 #endif // _PE_H_
