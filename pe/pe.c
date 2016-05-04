@@ -58,8 +58,7 @@ static void *get_peb()
 }
 
 #else
-#include <system/syscall.h>
-
+   #include <system/syscall.h>
 #endif
 
 #include "pe.h"
