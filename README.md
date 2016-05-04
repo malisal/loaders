@@ -4,7 +4,7 @@
 
 This repo is about small, self-contained implementations of various binary formats loaders (Macho on OSX, ELF on Linux/*BSD and PE on Windows). The rationale for these libraries is the following: You wrote an exploit and achieved arbitrary code execution. Now what?
 
-These loaders enable you to load and execute an arbitrary binary in your exploited process. The loaders are coded in a way that it's all done in memory, and they do not require access to system libraries/methods - it's all resolved on the fly.
+These loaders enable you to load and execute an arbitrary binary in your exploited process. The loaders are coded in a way that it's all done in memory, and they do not require access to system libraries/methods - it's all resolved on the fly. The Macho loader enables you to run bundle files, the ELF loader standard ELF files (no shared objects), and the PE loader enables you to run both DLLs and PE files alike.
 
 ### PE Loader
 
@@ -16,4 +16,4 @@ The macho loader requires access to some system functions (e.g., `NSCreateObject
 
 ### ELF Loader
 
-TODO
+The ELF loader parses the ELF file, searches for the dynamic linker and, if present, loads and jumps to it.
